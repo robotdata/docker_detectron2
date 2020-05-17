@@ -1,0 +1,130 @@
+#!/usr/bin/env python
+import sys
+import threading
+
+import cv2 as cv
+import numpy as np
+import rospy
+from detectron2.config import get_cfg
+from detectron2.data import MetadataCatalog
+from cv_bridge import CvBridge, CvBridgeError
+# import some common detectron2 utilities
+import detectron2
+from detectron2.engine import DefaultPredictor
+from detectron2.utils.logger import setup_logger
+from detectron2.utils.visualizer import Visualizer
+from detectron2_sync.msg import Result
+from sensor_msgs.msg import Image, RegionOfInterest
+from message_filters import ApproximateTimeSynchronizer, TimeSynchronizer, Subscriber
+from cv_bridge import CvBridge, CvBridgeError
+import torch
+from detectron2 import model_zoo
+
+from detectron2.utils.visualizer import ColorMode
+from detectron2.structures import BoxMode, Instances, RotatedBoxes
+
+bridge = CvBridge()
+
+cfg = get_cfg()
+cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
+
+#cfg.merge_from_file(rospy.get_param('~model'))
+
+def convert_to_cv_image(image_msg):
+
+    if image_msg is None:
+        return None
+    
+    channels = int(len(image_msg.data) / (image_msg.width * image_msg.height))
+
+    encoding = None
+    if image_msg.encoding.lower() in ['rgb8', 'bgr8']:
+        encoding = np.uint8
+    elif image_msg.encoding.lower() == 'mono8':
+        encoding = np.uint8
+    elif image_msg.encoding.lower() == '32fc1':
+        encoding = np.float32
+        channels = 1
+
+    cv_img = np.ndarray(shape=(image_msg.height, image_msg.width, channels),
+                        dtype=encoding, buffer=image_msg.data)
+
+    if image_msg.encoding.lower() == 'mono8':
+        cv_img = cv.cvtColor(cv_img, cv.COLOR_RGB2GRAY)
+    else:
+        cv_img = cv.cvtColor(cv_img, cv.COLOR_RGB2BGR)
+
+    return cv_img
+
+def mesg_masks2mask(mesg_masks):
+    mask_array = np.zeros((len(mesg_masks),mesg_masks[0].height, mesg_masks[0].width), dtype="bool")
+    for i, image_msg in enumerate(mesg_masks):
+        mask_array[i,:,:] = np.ndarray(shape=(image_msg.height, image_msg.width),
+                        dtype="uint8", buffer=image_msg.data)
+        #print(mask.shape)
+        
+    return torch.BoolTensor(mask_array)
+
+def mesg_box2box(mesg_boxes):
+    box_list = []
+    for box in mesg_boxes:
+        x1= np.float(box.x_offset) 
+        y1= np.float(box.y_offset)
+        x2= box.width+x1
+        y2= box.height+y1
+        box_list.append([x1,y1,x2,y2])
+    return detectron2.structures.boxes.Boxes(box_list)
+
+def rosmesg2instance(detectron2_res, rows, cols):
+    inst = Instances((rows, cols))
+
+    inst.pred_classes = torch.LongTensor(detectron2_res.class_ids)
+    inst.scores = torch.FloatTensor(detectron2_res.scores)
+    inst.pred_masks = mesg_masks2mask(detectron2_res.masks)
+    inst.pred_boxes = mesg_box2box(detectron2_res.boxes)
+    #print(detectron2_res.class_names)
+    return inst
+
+def got_image_label(image, detectron2_res):
+    assert image.header.stamp == detectron2_res.header.stamp
+    print('Image timestamp\t\t',image.header.stamp)
+    print('Detectron timestamp\t',detectron2_res.header.stamp)
+    print ("got an Image and detectron2 results")
+    
+    try:
+        cv_image = convert_to_cv_image(image)
+    except CvBridgeError as e:
+        print(e)
+    
+
+    
+    (rows,cols,channels) = cv_image.shape
+    
+    inst = rosmesg2instance(detectron2_res, rows, cols)
+    
+    v = Visualizer(cv_image[:, :, ::-1], MetadataCatalog.get(cfg.DATASETS.TRAIN[0]), scale=2.0, instance_mode=ColorMode.IMAGE_BW)
+    v = v.draw_instance_predictions(inst)
+
+    im_marked = v.get_image()[:, :, ::-1]
+    
+    
+    #cv.imshow("Image window", cv_image)
+    cv.imshow("Image window", im_marked)
+    cv.waitKey(3)
+
+def main(argv):
+    rospy.init_node('detectron2_sync')
+    
+    image_sub = Subscriber("/usb_cam/image_raw", Image)
+    camera_sub = Subscriber("/detectron2_ros/result", Result)
+
+    #ats = ApproximateTimeSynchronizer([image_sub, camera_sub], queue_size=5, slop=0.1)
+    ats = TimeSynchronizer([image_sub, camera_sub], queue_size=5)
+    ats.registerCallback(got_image_label)
+
+    rospy.spin()
+
+
+if __name__ == '__main__':
+    #print(detectron2_sync.__file__)
+    main(sys.argv)
