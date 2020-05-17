@@ -15,8 +15,6 @@ In this folder:
 
 `source /opt/ros/melodic/setup.bash`
 
-`export PATH=/root/anaconda3/bin:$PATH`
-
 `catkin_make`
 
 `source /catkin_ws/devel/setup.bash`
