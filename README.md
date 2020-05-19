@@ -17,7 +17,7 @@ In this folder:
 
 `catkin_make`
 
-`source /catkin_ws/devel/setup.bash`
+`source devel/setup.bash`
 
 `roslaunch detectron2_ros detectron2_ros.launch`
 
