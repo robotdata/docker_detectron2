@@ -21,5 +21,7 @@ In this folder:
 
 `roslaunch detectron2_ros detectron2_ros.launch`
 
+The result can be visualzied from the topic of `/detectron2_ros/visualization' using Rviz.
+
 ## synchronizer
 `roslaunch detectron2_sync detectron2_sync.launch`
