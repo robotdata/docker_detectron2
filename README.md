@@ -2,7 +2,9 @@
 
 A docker image with the detectron2 code.<br/>
 A ROS wrapper is included. <br/>
-Tested under Ubuntu 18.04 with docker, nvidia-docker, ROS installed.
+Tested under Ubuntu 18.04 with docker, nvidia-docker, ROS installed.<br/>
+`git clone https://gitlab.com/haiandaidi/docker_detectron2.git`<br/>
+`docker pull registry.gitlab.com/haiandaidi/docker_detectron2:2020_05_16`
 
 ## camera
 Start your camera driver.
